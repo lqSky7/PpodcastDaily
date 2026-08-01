@@ -5,9 +5,9 @@ podcast_generator.py
 Main orchestrator script:
 1. Obtains paper recommendation from Semantic Scholar.
 2. Restores Google NotebookLM credentials from environment variable.
-3. Uploads PDF source to NotebookLM.
+3. Uploads PDF source to NotebookLM using client.notebooks and client.sources.
 4. Requests long-form Audio Overview podcast with custom prompt instructions.
-5. Downloads .mp3 podcast output.
+5. Downloads .mp3 podcast output via client.artifacts.
 """
 
 import os
@@ -25,7 +25,6 @@ def restore_session():
     """Restore NotebookLM session storage state from environment variable."""
     state_content = os.environ.get("NOTEBOOKLM_STORAGE_STATE")
     if not state_content:
-        # Check if local storage file exists already (for local development)
         if STORAGE_FILE.exists():
             print(f"ℹ️  Using existing local storage file: {STORAGE_FILE}")
             return
@@ -48,17 +47,16 @@ async def run_pipeline():
     async with NotebookLMClient.from_storage() as client:
         notebook_title = f"Paper: {paper['title'][:50]}"
         print(f"\n📘 Creating NotebookLM notebook: '{notebook_title}'...")
-        notebook = await client.create_notebook(title=notebook_title)
+        notebook = await client.notebooks.create(title=notebook_title)
         print(f"✅ Created Notebook ID: {notebook.id}")
         
         # 4. Ingest Paper PDF Source
         print(f"📥 Uploading PDF source ({paper['pdf_url']})...")
-        await client.source.add_url(notebook.id, paper["pdf_url"], wait=True)
+        await client.sources.add_url(notebook.id, paper["pdf_url"], wait=True)
         print("✅ Source successfully ingested into NotebookLM.")
         
         # 5. Send custom podcast generation prompt
         prompt = config.get("podcast_prompt")
-        format_type = config.get("podcast_format", "deep-dive")
         
         print("\n🎙️ Triggering Audio Overview podcast generation...")
         print("Prompt instructions:")
@@ -66,12 +64,11 @@ async def run_pipeline():
         print(prompt)
         print("--------------------------------------------------")
         
-        audio_job = await client.audio.generate(
+        audio_status = await client.artifacts.generate_audio(
             notebook_id=notebook.id,
-            prompt=prompt,
-            format=format_type,
-            wait=True
+            instructions=prompt
         )
+        print(f"✅ Audio generation triggered: {audio_status}")
         
         # 6. Download MP3
         output_dir = pathlib.Path("output")
@@ -79,7 +76,7 @@ async def run_pipeline():
         
         output_mp3 = output_dir / "latest_paper_podcast.mp3"
         print(f"💾 Downloading podcast to {output_mp3}...")
-        await client.audio.download(notebook.id, output_path=str(output_mp3))
+        await client.artifacts.download_audio(notebook.id, output_path=str(output_mp3))
         
         # Write metadata summary
         info_md = output_dir / "latest_podcast_info.md"
@@ -98,7 +95,6 @@ async def run_pipeline():
         print(f"\n🎉 SUCCESS! Podcast generation complete!")
         print(f"🔊 Audio output saved at: {output_mp3.resolve()}")
         print(f"📄 Summary metadata saved at: {info_md.resolve()}")
-
 
 def main():
     asyncio.run(run_pipeline())
