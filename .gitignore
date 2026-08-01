@@ -1,0 +1,29 @@
+# Environment & Credentials
+.env
+*.env
+storage_state.json
+*.json
+!config.json
+.notebooklm/
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Output & Artifacts
+output/
+*.mp3
+*.wav
+*.md
+!README.md
+!walkthrough.md
+!implementation_plan.md
+
+# OS Files
+.DS_Store
+Thumbs.db
