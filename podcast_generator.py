@@ -44,8 +44,9 @@ async def run_pipeline():
     # 2. Restore credentials
     restore_session()
     
-    # 3. Initialize NotebookLM Client
-    client = NotebookLMClient()
+    # 3. Initialize NotebookLM Client from storage
+    client = await NotebookLMClient.from_storage()
+
     
     notebook_title = f"Paper: {paper['title'][:50]}"
     print(f"\n📘 Creating NotebookLM notebook: '{notebook_title}'...")
