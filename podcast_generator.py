@@ -45,47 +45,45 @@ async def run_pipeline():
     restore_session()
     
     # 3. Initialize NotebookLM Client from storage
-    client = await NotebookLMClient.from_storage()
-
-    
-    notebook_title = f"Paper: {paper['title'][:50]}"
-    print(f"\n📘 Creating NotebookLM notebook: '{notebook_title}'...")
-    notebook = await client.create_notebook(title=notebook_title)
-    print(f"✅ Created Notebook ID: {notebook.id}")
-    
-    # 4. Ingest Paper PDF Source
-    print(f"📥 Uploading PDF source ({paper['pdf_url']})...")
-    await client.source.add_url(notebook.id, paper["pdf_url"], wait=True)
-    print("✅ Source successfully ingested into NotebookLM.")
-    
-    # 5. Send custom podcast generation prompt
-    prompt = config.get("podcast_prompt")
-    format_type = config.get("podcast_format", "deep-dive")
-    
-    print("\n🎙️ Triggering Audio Overview podcast generation...")
-    print("Prompt instructions:")
-    print("--------------------------------------------------")
-    print(prompt)
-    print("--------------------------------------------------")
-    
-    audio_job = await client.audio.generate(
-        notebook_id=notebook.id,
-        prompt=prompt,
-        format=format_type,
-        wait=True
-    )
-    
-    # 6. Download MP3
-    output_dir = pathlib.Path("output")
-    output_dir.mkdir(exist_ok=True)
-    
-    output_mp3 = output_dir / "latest_paper_podcast.mp3"
-    print(f"💾 Downloading podcast to {output_mp3}...")
-    await client.audio.download(notebook.id, output_path=str(output_mp3))
-    
-    # Write metadata summary
-    info_md = output_dir / "latest_podcast_info.md"
-    info_content = f"""# 🎙️ Research Paper Podcast Summary
+    async with NotebookLMClient.from_storage() as client:
+        notebook_title = f"Paper: {paper['title'][:50]}"
+        print(f"\n📘 Creating NotebookLM notebook: '{notebook_title}'...")
+        notebook = await client.create_notebook(title=notebook_title)
+        print(f"✅ Created Notebook ID: {notebook.id}")
+        
+        # 4. Ingest Paper PDF Source
+        print(f"📥 Uploading PDF source ({paper['pdf_url']})...")
+        await client.source.add_url(notebook.id, paper["pdf_url"], wait=True)
+        print("✅ Source successfully ingested into NotebookLM.")
+        
+        # 5. Send custom podcast generation prompt
+        prompt = config.get("podcast_prompt")
+        format_type = config.get("podcast_format", "deep-dive")
+        
+        print("\n🎙️ Triggering Audio Overview podcast generation...")
+        print("Prompt instructions:")
+        print("--------------------------------------------------")
+        print(prompt)
+        print("--------------------------------------------------")
+        
+        audio_job = await client.audio.generate(
+            notebook_id=notebook.id,
+            prompt=prompt,
+            format=format_type,
+            wait=True
+        )
+        
+        # 6. Download MP3
+        output_dir = pathlib.Path("output")
+        output_dir.mkdir(exist_ok=True)
+        
+        output_mp3 = output_dir / "latest_paper_podcast.mp3"
+        print(f"💾 Downloading podcast to {output_mp3}...")
+        await client.audio.download(notebook.id, output_path=str(output_mp3))
+        
+        # Write metadata summary
+        info_md = output_dir / "latest_podcast_info.md"
+        info_content = f"""# 🎙️ Research Paper Podcast Summary
 
 - **Title:** {paper['title']}
 - **Authors:** {', '.join(paper.get('authors', []))} ({paper.get('year')})
@@ -95,11 +93,12 @@ async def run_pipeline():
 ## Abstract Overview
 {paper.get('abstract', 'No abstract summary available.')}
 """
-    info_md.write_text(info_content, encoding="utf-8")
-    
-    print(f"\n🎉 SUCCESS! Podcast generation complete!")
-    print(f"🔊 Audio output saved at: {output_mp3.resolve()}")
-    print(f"📄 Summary metadata saved at: {info_md.resolve()}")
+        info_md.write_text(info_content, encoding="utf-8")
+        
+        print(f"\n🎉 SUCCESS! Podcast generation complete!")
+        print(f"🔊 Audio output saved at: {output_mp3.resolve()}")
+        print(f"📄 Summary metadata saved at: {info_md.resolve()}")
+
 
 def main():
     asyncio.run(run_pipeline())
