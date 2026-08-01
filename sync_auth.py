@@ -3,7 +3,7 @@
 sync_auth.py
 
 Automated macOS Local Cookie Extractor & GitHub Secret Sync Utility.
-Scans Dia, Chrome, Brave, Edge & Arc browsers for Google session cookies,
+Scans Dia, Chrome, Brave, Edge & Arc browsers for all Google session & OSID cookies,
 decrypts macOS Chromium v10 AES-128-CBC payload (stripping 32-byte header),
 formats storage_state.json for NotebookLM, and syncs NOTEBOOKLM_STORAGE_STATE to GitHub.
 """
@@ -74,7 +74,11 @@ def extract_cookies_from_browser():
         ("Arc Default", Path.home() / "Library/Application Support/Arc/User Data/Default/Cookies", ["Arc Safe Storage", "Arc"]),
     ]
 
-    target_cookie_names = {"SID", "HSID", "SSID", "APISID", "SAPISID", "__Secure-1PSID", "__Secure-3PSID", "__Secure-1PSIDTS", "__Secure-3PSIDTS", "SIDCC"}
+    target_cookie_names = {
+        "SID", "HSID", "SSID", "APISID", "SAPISID", 
+        "__Secure-1PSID", "__Secure-3PSID", "__Secure-1PSIDTS", "__Secure-3PSIDTS", 
+        "SIDCC", "OSID", "__Secure-OSID", "__Secure-1PAPISID", "__Secure-3PAPISID"
+    }
 
     for bname, p, services in possible_paths:
         if not p.exists():
