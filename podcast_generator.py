@@ -11,8 +11,6 @@ Fire-and-Forget NotebookLM Podcast Generator:
 """
 
 import os
-import sys
-import json
 import pathlib
 import asyncio
 from paper_recommender import get_paper_recommendations, load_config
@@ -20,6 +18,8 @@ from notebooklm import NotebookLMClient
 
 STORAGE_DIR = pathlib.Path.home() / ".notebooklm"
 STORAGE_FILE = STORAGE_DIR / "storage_state.json"
+
+DOI_HOST_MARKERS = ("doi.org", "dx.doi.org")
 
 def restore_session():
     """Restore NotebookLM session storage state from environment variable."""
@@ -50,10 +50,52 @@ async def run_pipeline():
         notebook = await client.notebooks.create(title=notebook_title)
         print(f"✅ Created Notebook ID: {notebook.id}")
         
-        # 4. Ingest Paper PDF Source
-        print(f"📥 Uploading PDF source ({paper['pdf_url']})...")
-        await client.sources.add_url(notebook.id, paper["pdf_url"], wait=True)
-        print("✅ Source successfully ingested into NotebookLM.")
+        # 4. Ingest source (direct URL first; fallback to NotebookLM research discovery)
+        paper_url = paper["pdf_url"]
+        use_research_fallback = any(marker in paper_url for marker in DOI_HOST_MARKERS)
+
+        if not use_research_fallback:
+            try:
+                print(f"📥 Uploading PDF source ({paper_url})...")
+                await client.sources.add_url(notebook.id, paper_url, wait=True)
+                print("✅ Source successfully ingested into NotebookLM.")
+            except Exception as e:
+                print(f"⚠️ Direct source ingest failed ({e}). Falling back to NotebookLM web research...")
+                use_research_fallback = True
+        else:
+            print("⚠️ DOI-based source detected; using NotebookLM web research fallback to avoid rate limits.")
+
+        if use_research_fallback:
+            authors = ", ".join([a for a in paper.get("authors", []) if a]) or "unknown authors"
+            research_query = (
+                f'Find reliable web sources for the paper "{paper["title"]}" '
+                f'by {authors}. Prioritize the original publication and full-text sources.'
+            )
+            print("🔎 Starting NotebookLM web research for alternative sources...")
+            research_start = await client.research.start(
+                notebook_id=notebook.id,
+                query=research_query,
+                source="web",
+                mode="fast"
+            )
+            research_task = await client.research.wait_for_completion(
+                notebook_id=notebook.id,
+                task_id=research_start.task_id,
+                timeout=180
+            )
+
+            if research_task.status.value != "completed" or not research_task.sources:
+                raise RuntimeError(
+                    f"NotebookLM research fallback failed with status='{research_task.status.value}'."
+                )
+
+            await client.research.import_sources_with_verification(
+                notebook_id=notebook.id,
+                task_id=research_start.task_id,
+                sources=research_task.sources,
+                max_elapsed=180
+            )
+            print(f"✅ NotebookLM imported {len(research_task.sources)} researched source(s).")
         
         # 5. Send custom podcast generation prompt
         prompt = config.get("podcast_prompt")
