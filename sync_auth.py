@@ -3,7 +3,8 @@
 sync_auth.py
 
 Automated macOS Local Cookie Extractor & GitHub Secret Sync Utility.
-Scans Chrome, Dia, Brave, Edge, Arc & Chromium browsers for Google session cookies,
+Scans Dia, Chrome, Brave, Edge & Arc browsers for Google session cookies,
+decrypts macOS Chromium v10 AES-128-CBC payload (stripping 32-byte header),
 formats storage_state.json for NotebookLM, and syncs NOTEBOOKLM_STORAGE_STATE to GitHub.
 """
 
@@ -52,11 +53,12 @@ def decrypt_chrome_cookie_value(enc_val, key_hex):
             capture_output=True
         )
         decrypted = proc.stdout
-        if decrypted:
+        if decrypted and len(decrypted) > 32:
             pad_len = decrypted[-1]
             if 0 < pad_len <= 16:
                 decrypted = decrypted[:-pad_len]
-            return decrypted.decode("utf-8", errors="ignore")
+            # Chromium prepends a 32-byte SHA256 header before actual cookie value
+            return decrypted[32:].decode("utf-8", errors="ignore")
     except Exception:
         pass
     return ""
