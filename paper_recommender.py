@@ -2,8 +2,8 @@
 """
 paper_recommender.py
 
-Interfaces with Semantic Scholar Recommendations API to discover recommended
-research papers based on seed papers and interest categories.
+Interfaces with Semantic Scholar Recommendations API to discover diverse,
+non-repeating research paper recommendations based on seed papers and topics.
 """
 
 import json
@@ -12,79 +12,113 @@ import requests
 import random
 
 CONFIG_PATH = pathlib.Path(__file__).parent / "config.json"
+HISTORY_PATH = pathlib.Path(__file__).parent / "history.json"
 
 def load_config():
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def get_paper_recommendations(limit=10):
+def load_history():
+    if HISTORY_PATH.exists():
+        try:
+            with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+                return set(json.load(f))
+        except Exception:
+            pass
+    return set()
+
+def save_history(history_set):
+    # Keep last 200 items in history
+    history_list = list(history_set)[-200:]
+    with open(HISTORY_PATH, "w", encoding="utf-8") as f:
+        json.dump(history_list, f, indent=2)
+
+def get_paper_recommendations(limit=25):
     config = load_config()
     seed_papers = config.get("seed_papers", [])
+    history = load_history()
     
-    # Extract IDs (ArXiv IDs, DOIs, etc.)
-    seed_ids = []
-    for paper in seed_papers:
-        if "id" in paper:
-            seed_ids.append(paper["id"])
-            
-    print(f"🔍 Querying Semantic Scholar Recommendations with {len(seed_ids)} seed papers...")
+    # Extract IDs & randomly shuffle/sample seed subset to introduce diversity
+    seed_ids = [p["id"] for p in seed_papers if "id" in p]
+    if len(seed_ids) > 2:
+        # Pick a random subset of 2-3 seed papers to vary recommendation embedding space
+        sample_size = random.randint(2, min(4, len(seed_ids)))
+        selected_seeds = random.sample(seed_ids, sample_size)
+    else:
+        selected_seeds = seed_ids
+        
+    print(f"🔍 Querying Semantic Scholar with {len(selected_seeds)} randomized seed papers...")
     
     url = "https://api.semanticscholar.org/recommendations/v1/papers/"
     payload = {
-        "positivePaperIds": seed_ids,
+        "positivePaperIds": selected_seeds,
         "negativePaperIds": []
     }
     params = {
-        "fields": "title,abstract,authors,year,externalIds,openAccessPdf,citationCount,venue",
+        "fields": "title,abstract,authors,year,externalIds,openAccessPdf,citationCount,venue,publicationDate",
         "limit": limit
     }
     
     headers = {"User-Agent": "NotebookLM-Podcast-Bot/1.0"}
     
+    valid_papers = []
     try:
         res = requests.post(url, json=payload, params=params, headers=headers, timeout=15)
         res.raise_for_status()
         data = res.json()
         recommendations = data.get("recommendedPapers", [])
-        print(f"✅ Semantic Scholar returned {len(recommendations)} recommended papers.")
-    except Exception as e:
-        print(f"⚠️  Semantic Scholar Recommendations API call failed/timed out: {e}")
-        recommendations = []
-
-    # Filter papers with valid open access PDF URLs
-    valid_papers = []
-    for p in recommendations:
-        oa_pdf = p.get("openAccessPdf")
-        external_ids = p.get("externalIds", {})
+        print(f"✅ Semantic Scholar returned {len(recommendations)} candidate recommendations.")
         
-        pdf_url = None
-        if oa_pdf and oa_pdf.get("url"):
-            pdf_url = oa_pdf["url"]
-        elif external_ids.get("ArXiv"):
-            pdf_url = f"https://arxiv.org/pdf/{external_ids['ArXiv']}.pdf"
+        for p in recommendations:
+            oa_pdf = p.get("openAccessPdf")
+            external_ids = p.get("externalIds", {})
+            
+            pdf_url = None
+            if oa_pdf and oa_pdf.get("url"):
+                pdf_url = oa_pdf["url"]
+            elif external_ids.get("ArXiv"):
+                pdf_url = f"https://arxiv.org/pdf/{external_ids['ArXiv']}.pdf"
 
-        if pdf_url:
-            valid_papers.append({
-                "title": p.get("title", "Untitled Paper"),
-                "abstract": p.get("abstract", ""),
-                "pdf_url": pdf_url,
-                "authors": [a.get("name") for a in p.get("authors", [])],
-                "year": p.get("year"),
-                "citations": p.get("citationCount", 0),
-                "s2_id": p.get("paperId")
-            })
+            if pdf_url:
+                title = p.get("title", "Untitled Paper")
+                s2_id = p.get("paperId", title)
+                citations = p.get("citationCount", 0)
+                min_citations = config.get("min_citations", 5)
+                
+                # Ensure paper is credible (>= min_citations OR published recently in 2025/2026) and unseen
+                is_credible = (citations >= min_citations) or (p.get("year") and p.get("year") >= 2025)
+                if is_credible and title not in history and s2_id not in history:
+                    valid_papers.append({
+                        "title": title,
+                        "abstract": p.get("abstract", ""),
+                        "pdf_url": pdf_url,
+                        "authors": [a.get("name") for a in p.get("authors", [])],
+                        "year": p.get("year"),
+                        "citations": citations,
+                        "s2_id": s2_id
+                    })
+
+
+    except Exception as e:
+        print(f"⚠️  Semantic Scholar Recommendations API error: {e}")
 
     if valid_papers:
-        # Select top recommended paper
-        selected = valid_papers[0]
-        print(f"\n🎯 Selected Paper: '{selected['title']}' ({selected['year']})")
+        # Randomly select one paper from top candidates to guarantee fresh daily recommendations
+        selected = random.choice(valid_papers[:10])
+        print(f"\n🎯 Selected Fresh Paper: '{selected['title']}' ({selected['year']})")
         print(f"🔗 PDF URL: {selected['pdf_url']}")
+        
+        # Save selected paper to history to prevent repeat recommendations
+        history.add(selected["title"])
+        history.add(selected["s2_id"])
+        save_history(history)
+        
         return selected
 
-    print("⚠️  No paper with accessible PDF found in direct recommendations. Falling back to arXiv feed search...")
-    return fallback_arxiv_search(config)
+    print("⚠️  No unseen paper found in recommendations. Falling back to fresh arXiv search...")
+    return fallback_arxiv_search(config, history)
 
-def fallback_arxiv_search(config):
+def fallback_arxiv_search(config, history):
     import urllib.request
     import xml.etree.ElementTree as ET
     
@@ -92,7 +126,7 @@ def fallback_arxiv_search(config):
     query = " OR ".join([f"cat:{c}" for c in categories])
     encoded_query = urllib.parse.quote(query)
     
-    url = f"http://export.arxiv.org/api/query?search_query={encoded_query}&sortBy=submittedDate&sortOrder=descending&max_results=5"
+    url = f"http://export.arxiv.org/api/query?search_query={encoded_query}&sortBy=submittedDate&sortOrder=descending&max_results=15"
     
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req) as response:
@@ -105,10 +139,17 @@ def fallback_arxiv_search(config):
     if not entries:
         raise Exception("Failed to fetch papers from fallback arXiv query.")
         
-    entry = random.choice(entries)
-    title = entry.find('arxiv:title', ns).text.strip().replace('\n', ' ')
-    paper_id = entry.find('arxiv:id', ns).text.split('/')[-1]
-    abstract = entry.find('arxiv:summary', ns).text.strip()
+    unseen_entries = []
+    for entry in entries:
+        title = entry.find('arxiv:title', ns).text.strip().replace('\n', ' ')
+        if title not in history:
+            unseen_entries.append(entry)
+            
+    selected_entry = random.choice(unseen_entries) if unseen_entries else random.choice(entries)
+    
+    title = selected_entry.find('arxiv:title', ns).text.strip().replace('\n', ' ')
+    paper_id = selected_entry.find('arxiv:id', ns).text.split('/')[-1]
+    abstract = selected_entry.find('arxiv:summary', ns).text.strip()
     pdf_url = f"https://arxiv.org/pdf/{paper_id}.pdf"
     
     selected = {
@@ -120,6 +161,11 @@ def fallback_arxiv_search(config):
         "citations": 0,
         "s2_id": f"ARXIV:{paper_id}"
     }
+    
+    history.add(title)
+    history.add(selected["s2_id"])
+    save_history(history)
+    
     print(f"🎯 Fallback Selected Paper: '{selected['title']}'")
     print(f"🔗 PDF URL: {selected['pdf_url']}")
     return selected

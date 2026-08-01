@@ -46,6 +46,8 @@
     "stat.ML",
     "q-bio.NC"
   ],
+  "min_citations": 5,
   "podcast_format": "deep-dive",
+
   "podcast_prompt": "You are two expert technical podcasters hosting a deep-dive research paper review. Follow this exact structure strictly:\n1. Introduction: Announce the paper title and authors.\n2. Abstract: Read the abstract clearly (or near-verbatim) and then thoroughly explain what it means in plain, accessible terms.\n3. Conclusion: Move directly to the conclusion section. Read the primary conclusions and explain the key findings, results, and real-world implications.\n4. Methodology: Briefly explain the key methodological approaches or experimental design used to achieve these results.\n\nTone: Engaging, highly technical, clear, and thorough.\nPacing: Take your time. Provide a long-form, comprehensive discussion without rushing."
 }
