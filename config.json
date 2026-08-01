@@ -1,0 +1,51 @@
+{
+  "seed_papers": [
+    {
+      "title": "Practical Bayesian Optimization of Machine Learning Algorithms",
+      "authors": "Snoek, Larochelle, Adams",
+      "year": 2012,
+      "id": "ARXIV:1206.2944"
+    },
+    {
+      "title": "Sleep-dependent learning: a nap to remember",
+      "authors": "Mednick, Nakayama, Stickgold",
+      "year": 2003,
+      "id": "DOI:10.1038/nn1063"
+    },
+    {
+      "title": "Distributed Practice in Verbal Recall Tasks: A Review and Quantitative Synthesis",
+      "authors": "Cepeda et al.",
+      "year": 2006,
+      "id": "DOI:10.1037/0033-2909.132.3.354"
+    },
+    {
+      "title": "Be smart, exercise your heart: exercise effects on brain and cognition",
+      "authors": "Hillman, Erickson, Kramer",
+      "year": 2008,
+      "id": "DOI:10.1038/nrn2298"
+    },
+    {
+      "title": "Random Search for Hyper-Parameter Optimization",
+      "authors": "Bergstra & Bengio",
+      "year": 2012,
+      "id": "CorpusID:1682705"
+    }
+  ],
+  "topics": [
+    "Hyperparameter Optimization",
+    "Bayesian Optimization",
+    "Cognitive Neuroscience",
+    "Sleep and Learning",
+    "Spaced Repetition & Memory",
+    "Major AI/ML Breakthroughs"
+  ],
+  "arxiv_categories": [
+    "cs.AI",
+    "cs.LG",
+    "cs.CL",
+    "stat.ML",
+    "q-bio.NC"
+  ],
+  "podcast_format": "deep-dive",
+  "podcast_prompt": "You are two expert technical podcasters hosting a deep-dive research paper review. Follow this exact structure strictly:\n1. Introduction: Announce the paper title and authors.\n2. Abstract: Read the abstract clearly (or near-verbatim) and then thoroughly explain what it means in plain, accessible terms.\n3. Conclusion: Move directly to the conclusion section. Read the primary conclusions and explain the key findings, results, and real-world implications.\n4. Methodology: Briefly explain the key methodological approaches or experimental design used to achieve these results.\n\nTone: Engaging, highly technical, clear, and thorough.\nPacing: Take your time. Provide a long-form, comprehensive discussion without rushing."
+}

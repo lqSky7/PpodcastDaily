@@ -1,0 +1,41 @@
+name: Generate Research Paper Podcast
+
+on:
+  schedule:
+    # Runs every Monday at 08:00 UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Execute Podcast Generator Pipeline
+        env:
+          NOTEBOOKLM_STORAGE_STATE: ${{ secrets.NOTEBOOKLM_STORAGE_STATE }}
+        run: |
+          python podcast_generator.py
+
+      - name: Upload Podcast MP3 & Metadata as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-podcast-audio
+          path: output/
+          retention-days: 30
