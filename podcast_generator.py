@@ -7,7 +7,8 @@ Main orchestrator script:
 2. Restores Google NotebookLM credentials from environment variable.
 3. Uploads PDF source to NotebookLM using client.notebooks and client.sources.
 4. Requests long-form Audio Overview podcast with custom prompt instructions.
-5. Downloads .mp3 podcast output via client.artifacts.
+5. Polls & waits for audio generation completion via client.artifacts.wait_for_completion().
+6. Downloads .mp3 podcast output via client.artifacts.download_audio().
 """
 
 import os
@@ -68,7 +69,16 @@ async def run_pipeline():
             notebook_id=notebook.id,
             instructions=prompt
         )
-        print(f"✅ Audio generation triggered: {audio_status}")
+        print(f"✅ Audio generation triggered (Task ID: {audio_status.task_id})")
+        print("⏳ Waiting for NotebookLM to synthesize audio podcast (this takes ~1–3 mins)...")
+        
+        # Wait for audio synthesis completion
+        final_status = await client.artifacts.wait_for_completion(
+            notebook_id=notebook.id,
+            task_id=audio_status.task_id,
+            timeout=600.0
+        )
+        print(f"🎉 Audio synthesis complete! Status: {final_status.status}")
         
         # 6. Download MP3
         output_dir = pathlib.Path("output")
