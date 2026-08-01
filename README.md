@@ -1,78 +1,93 @@
-# 🎙️ Serverless Research Paper Podcast Generator
+# Automated Research Paper Podcast Generator
 
-An automated, serverless pipeline that uses **Semantic Scholar Recommendations API** to discover paper recommendations based on your seed preferences, uploads the paper to **Google NotebookLM (`notebooklm-py`)**, generates a long-form podcast (Abstract → Conclusion → Methodology), and runs automatically via **GitHub Actions**.
+Daily Serverless Research Paper Discovery and Podcast Synthesis using Semantic Scholar API and Google NotebookLM.
 
----
+[![License: MIT](https://img.shields.org/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.org/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![GitHub Actions](https://img.shields.org/badge/CI-GitHub--Actions-blue)](https://github.com/lqSky7/PpodcastDaily/actions)
 
-## 🌟 Key Features
-
-1. **Semantic Scholar Paper Recommendation Engine**:
-   - Uses your seed paper library (Bayesian Optimization, Hyperparameter Tuning, Cognitive Neuroscience, Sleep & Memory) to find relevant newly published research papers with open-access PDFs.
-2. **NotebookLM Automated Podcasting**:
-   - Ingests paper PDFs programmatically.
-   - Instructs NotebookLM hosts to **strictly read & explain the Abstract**, then **read & explain the Conclusion**, and briefly cover **Methodology**.
-3. **One-Click Local Secret Auto-Sync**:
-   - Run `python sync_auth.py` on your PC. It logs into NotebookLM and automatically uploads your session credentials (`storage_state.json`) directly to your **GitHub Actions Secrets**. No manual copy-pasting required!
-4. **Serverless Execution**:
-   - Runs on a cron schedule or on-demand via GitHub Actions `workflow_dispatch`.
+An automated, serverless Python pipeline that discovers high-impact research papers using the **Semantic Scholar Recommendations API**, ingests them into **Google NotebookLM (`notebooklm-py`)**, triggers long-form structured audio overview podcast synthesis, and runs headlessly on GitHub Actions.
 
 ---
 
-## 📁 Repository Structure
+## Overview
+
+This project automates daily research paper discovery and audio overview creation. It evaluates research paper candidates based on user-defined seed paper embeddings and credibility thresholds, filters out uncited or irrelevant works, and instructs Google NotebookLM AI hosts to generate structured technical podcast episodes.
+
+---
+
+## Key Features
+
+- **Semantic Scholar Recommendation Engine**: Uses seed paper embeddings (Bayesian Optimization, Hyperparameter Tuning, Cognitive Neuroscience, Sleep and Memory) to discover relevant, open-access research papers.
+- **Credibility and Citation Filtering**: Enforces minimum citation thresholds and recent publication filters to exclude low-quality or zero-citation papers.
+- **Dynamic Non-Repeating Pipeline**: Shuffles seed subsets and maintains persistent recommendation history to guarantee new, distinct paper recommendations on every run.
+- **Structured Podcast Prompting**: Directs NotebookLM hosts to follow a strict format: Abstract explanation, Conclusion and implications, and key Methodology details.
+- **Automated Local Cookie Sync**: Includes a native macOS CLI utility (`sync_auth.py`) that extracts and decrypts local Chromium/Dia browser session cookies via macOS Keychain and updates GitHub Actions Secrets automatically.
+- **Serverless & Cost Efficient**: Executes on GitHub Actions in fire-and-forget mode, triggering cloud audio rendering in seconds without wasting runner compute.
+
+---
+
+## Repository Structure
 
 ```text
-├── config.json                            # Seed papers, topics & podcast prompt configuration
-├── paper_recommender.py                   # Semantic Scholar API paper discovery engine
-├── podcast_generator.py                   # NotebookLM ingestion & podcast creation runner
-├── sync_auth.py                           # Local CLI utility to login & auto-sync credentials to GitHub
-├── requirements.txt                       # Project Python dependencies
-└── .github/workflows/paper_podcast_cron.yml  # GitHub Actions serverless cron workflow
+├── config.json                            # Seed papers, topics, minimum citations, and podcast prompt
+├── paper_recommender.py                   # Semantic Scholar paper discovery and filtering engine
+├── podcast_generator.py                   # NotebookLM ingestion and audio generation runner
+├── sync_auth.py                           # Native macOS browser cookie extraction & GitHub secret sync
+├── requirements.txt                       # Python dependencies
+└── .github/workflows/paper_podcast_cron.yml  # GitHub Actions cron workflow (Daily 8:00 AM IST)
 ```
 
 ---
 
-## 🚀 Quick Start Guide
+## System Architecture
 
-### 1. Local Setup
+```text
+[ Seed Papers / Topics ]
+           │
+           ▼
+[ Semantic Scholar API ] ──(Filters: Open Access PDF + Min Citations)──► [ Target Paper ]
+                                                                               │
+                                                                               ▼
+[ GitHub Actions / Cron ] ──(Restores NOTEBOOKLM_STORAGE_STATE)────────► [ Google NotebookLM ]
+                                                                               │
+                                                                               ▼
+                                                                 [ Audio Overview Podcast ]
+```
 
-Install dependencies:
+---
+
+## Quick Start Guide
+
+### 1. Prerequisites
+
+- Python 3.11 or higher
+- GitHub CLI (`gh`) authenticated via `gh auth login`
+
+### 2. Install Dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Login & Sync Credentials to GitHub
+### 3. Local Authentication Sync
 
-Make sure you have [GitHub CLI (`gh`)](https://cli.github.com/) installed and logged in (`gh auth login`).
+Run the local authentication utility to extract your session cookies and sync them to your GitHub repository secret (`NOTEBOOKLM_STORAGE_STATE`):
 
-Then simply run:
 ```bash
-python sync_auth.py
+python3 sync_auth.py
 ```
 
-This will:
-1. Open a browser window to authenticate with your Google account for NotebookLM.
-2. Save credentials to `~/.notebooklm/storage_state.json`.
-3. Automatically upload the credentials to your repository secret named `NOTEBOOKLM_STORAGE_STATE`.
+### 4. Scheduled and Manual Execution
 
-### 3. Test Paper Recommendations Locally
-
-You can test paper recommendation discovery anytime:
-```bash
-python paper_recommender.py
-```
-
-### 4. Trigger Serverless Run on GitHub
-
-1. Push this repository to GitHub.
-2. Go to the **Actions** tab in your GitHub repository.
-3. Select **Generate Research Paper Podcast** and click **Run workflow**.
-4. Once completed, download your podcast from the **Artifacts** section!
+- **Scheduled**: Runs automatically every day at 8:00 AM IST (`02:30 UTC`).
+- **Manual**: Trigger on-demand via the GitHub Actions UI under `Actions > Generate Research Paper Podcast > Run workflow`.
 
 ---
 
-## ⚙️ Customizing Seed Papers & Topics
+## Configuration
 
-Edit `config.json` to update your seed papers or topic preferences:
+Edit `config.json` to customize your seed papers, topic preferences, and citation filters:
 
 ```json
 {
@@ -85,15 +100,14 @@ Edit `config.json` to update your seed papers or topic preferences:
       "title": "Sleep-dependent learning: a nap to remember",
       "id": "DOI:10.1038/nn1063"
     }
-  ]
+  ],
+  "min_citations": 5,
+  "podcast_format": "deep-dive"
 }
 ```
 
 ---
 
-## 🔑 Session Expiration & Refreshing
+## License
 
-Google session cookies eventually expire every few weeks/months. If a GitHub Action run fails due to authentication:
-1. Open terminal on your local PC.
-2. Run `python sync_auth.py --force-login`.
-3. Your updated credentials will instantly sync to GitHub Secrets!
+This project is open-source software licensed under the MIT License.
