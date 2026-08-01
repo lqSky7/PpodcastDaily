@@ -3,10 +3,8 @@
 sync_auth.py
 
 Automated macOS Local Cookie Extractor & GitHub Secret Sync Utility.
-1. Extracts & decrypts all Google cookies directly from local Chrome / Brave / Edge SQLite database.
-2. Formats storage_state.json for NotebookLM.
-3. Automatically syncs NOTEBOOKLM_STORAGE_STATE secret to GitHub Actions.
-4. Triggers a fresh test workflow run on GitHub.
+Scans Chrome, Dia, Brave, Edge, Arc & Chromium browsers for Google session cookies,
+formats storage_state.json for NotebookLM, and syncs NOTEBOOKLM_STORAGE_STATE to GitHub.
 """
 
 import os
@@ -19,19 +17,25 @@ import subprocess
 import hashlib
 from pathlib import Path
 
-
 STORAGE_PATH = Path.home() / ".notebooklm" / "storage_state.json"
 SECRET_NAME = "NOTEBOOKLM_STORAGE_STATE"
 REPO_NAME = "lqSky7/PpodcastDaily"
 
-def get_keychain_password(service_name="Chrome Safe Storage"):
-    """Fetch encryption password from macOS Keychain."""
-    try:
-        cmd = ["security", "find-generic-password", "-w", "-s", service_name]
-        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        return res.stdout.strip()
-    except Exception as e:
-        return None
+def get_keychain_password(service_names):
+    """Fetch encryption password from macOS Keychain trying multiple service names."""
+    if isinstance(service_names, str):
+        service_names = [service_names]
+        
+    for s in service_names:
+        try:
+            cmd = ["security", "find-generic-password", "-w", "-s", s]
+            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            val = res.stdout.strip()
+            if val:
+                return val
+        except Exception:
+            continue
+    return None
 
 def decrypt_chrome_cookie_value(enc_val, key_hex):
     """Decrypt v10/v11 Chrome AES-128-CBC encrypted cookie value on macOS."""
@@ -60,86 +64,76 @@ def decrypt_chrome_cookie_value(enc_val, key_hex):
 def extract_cookies_from_browser():
     """Locate browser cookie DB and extract all Google cookies."""
     possible_paths = [
-        ("Chrome", Path.home() / "Library/Application Support/Google/Chrome/Default/Cookies", "Chrome Safe Storage"),
-        ("Chrome Profile 1", Path.home() / "Library/Application Support/Google/Chrome/Profile 1/Cookies", "Chrome Safe Storage"),
-        ("Brave", Path.home() / "Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies", "Brave Safe Storage"),
-        ("Edge", Path.home() / "Library/Application Support/Microsoft Edge/Default/Cookies", "Microsoft Edge Safe Storage"),
+        ("Dia Browser", Path.home() / "Library/Application Support/Dia/User Data/Default/Cookies", ["Dia Safe Storage", "Dia"]),
+        ("Chrome Default", Path.home() / "Library/Application Support/Google/Chrome/Default/Cookies", ["Chrome Safe Storage", "Chrome"]),
+        ("Chrome Profile 1", Path.home() / "Library/Application Support/Google/Chrome/Profile 1/Cookies", ["Chrome Safe Storage", "Chrome"]),
+        ("Brave Default", Path.home() / "Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies", ["Brave Safe Storage", "Brave"]),
+        ("Edge Default", Path.home() / "Library/Application Support/Microsoft Edge/Default/Cookies", ["Microsoft Edge Safe Storage", "Microsoft Edge"]),
+        ("Arc Default", Path.home() / "Library/Application Support/Arc/User Data/Default/Cookies", ["Arc Safe Storage", "Arc"]),
     ]
 
-    target_db = None
-    target_service = None
-    browser_name = ""
-
-    for bname, p, service in possible_paths:
-        if p.exists():
-            target_db = p
-            target_service = service
-            browser_name = bname
-            break
-
-    if not target_db:
-        print("❌ Could not locate Chrome/Brave/Edge cookies database on this system.")
-        return None
-
-    print(f"🔍 Found browser cookies DB: {browser_name} ({target_db})")
-    
-    key_pass = get_keychain_password(target_service)
-    if not key_pass:
-        print(f"⚠️  Could not retrieve {target_service} key from macOS Keychain.")
-        return None
-
-    # Derive PBKDF2 AES-128 key
-    key_bytes = hashlib.pbkdf2_hmac("sha1", key_pass.encode("utf-8"), b"saltysalt", 1003, 16)
-    key_hex = key_bytes.hex()
-
-    tmp_db = Path(tempfile.gettempdir()) / "notebooklm_cookies_tmp.db"
-    try:
-        shutil.copyfile(target_db, tmp_db)
-    except PermissionError:
-        print("❌ macOS Permission Denied accessing browser cookies DB.")
-        print("Grant Full Disk Access to your Terminal in System Settings > Privacy & Security > Full Disk Access.")
-        return None
-
-    conn = sqlite3.connect(tmp_db)
-    cursor = conn.cursor()
-
-    query = """
-        SELECT name, host_key, path, encrypted_value, is_secure, is_httponly, expires_utc 
-        FROM cookies 
-        WHERE host_key LIKE '%google.com'
-    """
-    cursor.execute(query)
-    rows = cursor.fetchall()
-    conn.close()
-    
-    try:
-        tmp_db.unlink()
-    except Exception:
-        pass
-
-    extracted_cookies = []
     target_cookie_names = {"SID", "HSID", "SSID", "APISID", "SAPISID", "__Secure-1PSID", "__Secure-3PSID", "__Secure-1PSIDTS", "__Secure-3PSIDTS", "SIDCC"}
 
-    for name, host_key, path, enc_val, is_secure, is_httponly, expires_utc in rows:
-        if name in target_cookie_names:
-            val = decrypt_chrome_cookie_value(enc_val, key_hex)
-            if val:
-                extracted_cookies.append({
-                    "name": name,
-                    "value": val,
-                    "domain": host_key if host_key.startswith(".") else f".{host_key}",
-                    "path": path or "/",
-                    "expires": -1,
-                    "httpOnly": bool(is_httponly),
-                    "secure": bool(is_secure),
-                    "sameSite": "Lax"
-                })
+    for bname, p, services in possible_paths:
+        if not p.exists():
+            continue
 
-    print(f"✅ Successfully extracted and decrypted {len(extracted_cookies)} Google authentication cookies!")
-    return {
-        "cookies": extracted_cookies,
-        "origins": [{"origin": "https://notebooklm.google.com", "localStorage": []}]
-    }
+        key_pass = get_keychain_password(services)
+        if not key_pass:
+            continue
+
+        key_bytes = hashlib.pbkdf2_hmac("sha1", key_pass.encode("utf-8"), b"saltysalt", 1003, 16)
+        key_hex = key_bytes.hex()
+
+        tmp_db = Path(tempfile.gettempdir()) / "notebooklm_cookies_scan_tmp.db"
+        try:
+            shutil.copyfile(p, tmp_db)
+        except Exception:
+            continue
+
+        try:
+            conn = sqlite3.connect(tmp_db)
+            cursor = conn.cursor()
+            query = """
+                SELECT name, host_key, path, encrypted_value, is_secure, is_httponly 
+                FROM cookies 
+                WHERE host_key LIKE '%google.com'
+            """
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            conn.close()
+            tmp_db.unlink()
+        except Exception:
+            continue
+
+        extracted_cookies = []
+        found_names = set()
+
+        for name, host_key, path, enc_val, is_secure, is_httponly in rows:
+            if name in target_cookie_names:
+                val = decrypt_chrome_cookie_value(enc_val, key_hex)
+                if val:
+                    extracted_cookies.append({
+                        "name": name,
+                        "value": val,
+                        "domain": host_key if host_key.startswith(".") else f".{host_key}",
+                        "path": path or "/",
+                        "expires": -1,
+                        "httpOnly": bool(is_httponly),
+                        "secure": bool(is_secure),
+                        "sameSite": "None" if "3P" in name else "Lax"
+                    })
+                    found_names.add(name)
+
+        if "SID" in found_names and "__Secure-1PSIDTS" in found_names:
+            print(f"🎯 BINGO! Successfully extracted {len(extracted_cookies)} valid Google session cookies from {bname}!")
+            return {
+                "cookies": extracted_cookies,
+                "origins": [{"origin": "https://notebooklm.google.com", "localStorage": []}]
+            }
+
+    print("❌ Could not find active Google session cookies with SID & __Secure-1PSIDTS.")
+    return None
 
 def sync_to_github(state_data):
     """Sync storage_state.json data directly to GitHub Secrets using gh CLI."""
@@ -177,10 +171,8 @@ def main():
     print("🔒 Automatic Local Cookie Extractor & GitHub Sync")
     print("=" * 60)
 
-    # 1. Extract cookies directly from browser
     state = extract_cookies_from_browser()
     if not state or not state.get("cookies"):
-        print("❌ Cookie extraction failed.")
         sys.exit(1)
 
     # Save to local storage file
@@ -189,9 +181,9 @@ def main():
         json.dump(state, f, indent=2)
     print(f"💾 Saved local session state to: {STORAGE_PATH}")
 
-    # 2. Sync to GitHub Secrets
+    # Sync to GitHub Secrets
     if sync_to_github(state):
-        # 3. Trigger test cron
+        # Trigger test cron
         trigger_workflow()
 
 if __name__ == "__main__":
