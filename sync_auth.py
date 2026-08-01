@@ -62,17 +62,52 @@ def sync_to_github():
         print(f"❌ Failed to update secret: {stderr}")
         sys.exit(1)
 
+def parse_raw_cookies(raw_str):
+    """Parse raw HTTP Cookie string from DevTools Network tab into storage_state.json format."""
+    cookies = []
+    for item in raw_str.split(';'):
+        item = item.strip()
+        if '=' in item:
+            name, val = item.split('=', 1)
+            cookies.append({
+                "name": name,
+                "value": val,
+                "domain": ".google.com",
+                "path": "/",
+                "expires": -1,
+                "httpOnly": False,
+                "secure": True,
+                "sameSite": "Lax"
+            })
+    return {
+        "cookies": cookies,
+        "origins": [{"origin": "https://notebooklm.google.com", "localStorage": []}]
+    }
+
 def main():
     print("=" * 60)
     print("🔒 NotebookLM -> GitHub Secret Auto-Sync Utility")
     print("=" * 60)
     
+    # Check if raw cookie string is provided as command line argument
+    for arg in sys.argv[1:]:
+        if arg.startswith("--cookie="):
+            raw_cookies = arg.split("=", 1)[1]
+            state = parse_raw_cookies(raw_cookies)
+            STORAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(STORAGE_PATH, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+            print(f"✅ Created {STORAGE_PATH} from raw cookie header!")
+            sync_to_github()
+            return
+            
     if "--force-login" in sys.argv:
         print("🔄 Force login requested...")
         subprocess.run(["notebooklm", "login"], check=True)
         
     check_login()
     sync_to_github()
+
 
 if __name__ == "__main__":
     main()
