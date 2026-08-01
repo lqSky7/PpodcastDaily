@@ -14,9 +14,11 @@ import sys
 import json
 import sqlite3
 import shutil
+import tempfile
 import subprocess
 import hashlib
 from pathlib import Path
+
 
 STORAGE_PATH = Path.home() / ".notebooklm" / "storage_state.json"
 SECRET_NAME = "NOTEBOOKLM_STORAGE_STATE"
