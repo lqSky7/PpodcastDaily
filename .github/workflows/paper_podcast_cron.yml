@@ -6,11 +6,10 @@ on:
     - cron: '30 2 * * *'
   workflow_dispatch:
 
-
 jobs:
   build-and-run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
 
     steps:
       - name: Checkout Code
@@ -27,16 +26,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-
       - name: Execute Podcast Generator Pipeline
         env:
           NOTEBOOKLM_STORAGE_STATE: ${{ secrets.NOTEBOOKLM_STORAGE_STATE }}
         run: |
           python podcast_generator.py
-
-      - name: Upload Podcast MP3 & Metadata as Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: paper-podcast-audio
-          path: output/
-          retention-days: 30

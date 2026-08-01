@@ -2,13 +2,12 @@
 """
 podcast_generator.py
 
-Main orchestrator script:
-1. Obtains paper recommendation from Semantic Scholar.
+Fire-and-Forget NotebookLM Podcast Generator:
+1. Obtains paper recommendation from Semantic Scholar based on seed papers.
 2. Restores Google NotebookLM credentials from environment variable.
-3. Uploads PDF source to NotebookLM using client.notebooks and client.sources.
-4. Requests long-form Audio Overview podcast with custom prompt instructions.
-5. Polls & waits for audio generation completion via client.artifacts.wait_for_completion().
-6. Downloads .mp3 podcast output via client.artifacts.download_audio().
+3. Creates a Notebook and uploads the paper PDF source.
+4. Triggers Audio Overview podcast generation with custom instructions (Abstract -> Conclusion -> Methodology).
+5. Exits immediately so audio synthesizes in the cloud without wasting GitHub Actions runner compute!
 """
 
 import os
@@ -69,42 +68,11 @@ async def run_pipeline():
             notebook_id=notebook.id,
             instructions=prompt
         )
-        print(f"✅ Audio generation triggered (Task ID: {audio_status.task_id})")
-        print("⏳ Waiting for NotebookLM to synthesize audio podcast (this takes ~1–3 mins)...")
         
-        # Wait for audio synthesis completion
-        final_status = await client.artifacts.wait_for_completion(
-            notebook_id=notebook.id,
-            task_id=audio_status.task_id,
-            timeout=600.0
-        )
-        print(f"🎉 Audio synthesis complete! Status: {final_status.status}")
-        
-        # 6. Download MP3
-        output_dir = pathlib.Path("output")
-        output_dir.mkdir(exist_ok=True)
-        
-        output_mp3 = output_dir / "latest_paper_podcast.mp3"
-        print(f"💾 Downloading podcast to {output_mp3}...")
-        await client.artifacts.download_audio(notebook.id, output_path=str(output_mp3))
-        
-        # Write metadata summary
-        info_md = output_dir / "latest_podcast_info.md"
-        info_content = f"""# 🎙️ Research Paper Podcast Summary
-
-- **Title:** {paper['title']}
-- **Authors:** {', '.join(paper.get('authors', []))} ({paper.get('year')})
-- **PDF Source:** [{paper['pdf_url']}]({paper['pdf_url']})
-- **Podcast File:** [{output_mp3.name}](file://{output_mp3.resolve()})
-
-## Abstract Overview
-{paper.get('abstract', 'No abstract summary available.')}
-"""
-        info_md.write_text(info_content, encoding="utf-8")
-        
-        print(f"\n🎉 SUCCESS! Podcast generation complete!")
-        print(f"🔊 Audio output saved at: {output_mp3.resolve()}")
-        print(f"📄 Summary metadata saved at: {info_md.resolve()}")
+        print(f"\n🎉 SUCCESS! Podcast generation requested in Google NotebookLM!")
+        print(f"📌 Task ID: {audio_status.task_id}")
+        print(f"🔗 Open your notebook on web: https://notebooklm.google.com/notebook/{notebook.id}")
+        print("⚡ Exiting immediately to save GitHub server compute. Audio will render in the cloud!")
 
 def main():
     asyncio.run(run_pipeline())
