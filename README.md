@@ -22,6 +22,7 @@ This project automates daily research paper discovery and audio overview creatio
 - **Credibility and Citation Filtering**: Enforces minimum citation thresholds and recent publication filters to exclude low-quality or zero-citation papers.
 - **Dynamic Non-Repeating Pipeline**: Shuffles seed subsets and maintains persistent recommendation history to guarantee new, distinct paper recommendations on every run.
 - **Structured Podcast Prompting**: Directs NotebookLM hosts to follow a strict format: Abstract explanation, Conclusion and implications, and key Methodology details.
+- **NotebookLM Source Discovery Fallback**: If direct paper URL ingestion fails (or DOI links are likely to be rate-limited), NotebookLM web research is used to discover and import alternative sources automatically.
 - **Automated Local Cookie Sync**: Includes a native macOS CLI utility (`sync_auth.py`) that extracts and decrypts local Chromium/Dia browser session cookies via macOS Keychain and updates GitHub Actions Secrets automatically.
 - **Serverless & Cost Efficient**: Executes on GitHub Actions in fire-and-forget mode, triggering cloud audio rendering in seconds without wasting runner compute.
 
