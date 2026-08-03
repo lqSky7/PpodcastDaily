@@ -2,15 +2,17 @@
 """
 podcast_generator.py
 
-Fire-and-Forget NotebookLM Podcast Generator with Self-Healing Auth Sync:
+Fire-and-Forget NotebookLM Podcast Generator via Web Research Search:
 1. Obtains paper recommendation from Semantic Scholar based on seed papers.
 2. Restores Google NotebookLM credentials from environment variable.
-3. Creates a Notebook and uploads the paper PDF source.
+3. Creates a Notebook and performs NotebookLM Web Research Search to import sources.
 4. Triggers Audio Overview podcast generation with custom instructions (Abstract -> Conclusion -> Methodology).
 5. Auto-syncs any refreshed cookies back to GitHub Secrets so credentials never expire!
 """
 
 import os
+import sys
+import json
 import pathlib
 import asyncio
 import subprocess
@@ -19,8 +21,6 @@ from notebooklm import NotebookLMClient
 
 STORAGE_DIR = pathlib.Path.home() / ".notebooklm"
 STORAGE_FILE = STORAGE_DIR / "storage_state.json"
-
-DOI_HOST_MARKERS = ("doi.org", "dx.doi.org")
 
 def restore_session():
     """Restore NotebookLM session storage state from environment variable."""
@@ -48,8 +48,6 @@ def auto_sync_refreshed_credentials():
         
     try:
         updated_state = STORAGE_FILE.read_text(encoding="utf-8")
-        
-        # Pass GitHub token if available
         repo = os.environ.get("GITHUB_REPOSITORY", "lqSky7/PpodcastDaily")
         
         print("🔄 Auto-syncing refreshed NotebookLM session state to GitHub Secrets...")
@@ -65,7 +63,7 @@ def auto_sync_refreshed_credentials():
         if proc.returncode == 0:
             print("🎉 SUCCESS: Refreshed session credentials saved back to GitHub Secrets!")
         else:
-            print(f"ℹ️  Secret auto-sync skipped (requires secret write permission): {stderr.strip()}")
+            print(f"ℹ️  Secret auto-sync skipped: {stderr.strip()}")
     except Exception as e:
         print(f"ℹ️  Secret auto-sync note: {e}")
 
@@ -85,52 +83,23 @@ async def run_pipeline():
         notebook = await client.notebooks.create(title=notebook_title)
         print(f"✅ Created Notebook ID: {notebook.id}")
         
-        # 4. Ingest source (direct URL first; fallback to NotebookLM research discovery)
-        paper_url = paper["pdf_url"]
-        use_research_fallback = any(marker in paper_url for marker in DOI_HOST_MARKERS)
-
-        if not use_research_fallback:
-            try:
-                print(f"📥 Uploading PDF source ({paper_url})...")
-                await client.sources.add_url(notebook.id, paper_url, wait=True)
-                print("✅ Source successfully ingested into NotebookLM.")
-            except Exception as e:
-                print(f"⚠️ Direct source ingest failed ({e}). Falling back to NotebookLM web research...")
-                use_research_fallback = True
+        # 4. Perform NotebookLM Web Research Search to ingest sources
+        query_str = f"\"{paper['title']}\""
+        if paper.get("authors") and paper["authors"][0]:
+            query_str += f" {paper['authors'][0]}"
+            
+        print(f"🔎 Executing NotebookLM Web Research Search for query: {query_str}...")
+        start = await client.research.start(notebook.id, query=query_str, source="web", mode="fast")
+        task = await client.research.wait_for_completion(notebook.id, start.task_id, timeout=120.0)
+        
+        if task.sources:
+            imported = await client.research.import_sources(notebook.id, start.task_id, sources=task.sources)
+            print(f"✅ Successfully imported {len(imported)} Web Research sources into NotebookLM.")
         else:
-            print("⚠️ DOI-based source detected; using NotebookLM web research fallback to avoid rate limits.")
-
-        if use_research_fallback:
-            authors = ", ".join([a for a in paper.get("authors", []) if a]) or "unknown authors"
-            research_query = (
-                f'Find reliable web sources for the paper "{paper["title"]}" '
-                f'by {authors}. Prioritize the original publication and full-text sources.'
-            )
-            print("🔎 Starting NotebookLM web research for alternative sources...")
-            research_start = await client.research.start(
-                notebook_id=notebook.id,
-                query=research_query,
-                source="web",
-                mode="fast"
-            )
-            research_task = await client.research.wait_for_completion(
-                notebook_id=notebook.id,
-                task_id=research_start.task_id,
-                timeout=180
-            )
-
-            if research_task.status.value != "completed" or not research_task.sources:
-                raise RuntimeError(
-                    f"NotebookLM research fallback failed with status='{research_task.status.value}'."
-                )
-
-            await client.research.import_sources_with_verification(
-                notebook_id=notebook.id,
-                task_id=research_start.task_id,
-                sources=research_task.sources,
-                max_elapsed=180
-            )
-            print(f"✅ NotebookLM imported {len(research_task.sources)} researched source(s).")
+            # Fallback to direct url ingest if web research yields no items
+            print(f"📥 Fallback: Ingesting direct paper URL ({paper['pdf_url']})...")
+            await client.sources.add_url(notebook.id, paper["pdf_url"], wait=True)
+            print("✅ Direct source ingested into NotebookLM.")
         
         # 5. Send custom podcast generation prompt
         prompt = config.get("podcast_prompt")

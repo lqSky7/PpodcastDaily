@@ -2,8 +2,9 @@ name: Generate Research Paper Podcast
 
 on:
   schedule:
-    # Runs every day at 8:07 AM IST (02:37 UTC off-peak to avoid GitHub Actions queue delays)
-    - cron: '37 2 * * *'
+    # Runs 4 times a day (every 6 hours: 8:07 AM IST, 2:07 PM IST, 8:07 PM IST, 2:07 AM IST)
+    # Frequent triggers continuously refresh & auto-save Google session cookies to GitHub Secrets.
+    - cron: '37 2,8,14,20 * * *'
   workflow_dispatch:
 
 jobs:
