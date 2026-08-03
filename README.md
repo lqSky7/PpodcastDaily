@@ -71,13 +71,20 @@ This project automates daily research paper discovery and audio overview creatio
 pip install -r requirements.txt
 ```
 
-### 3. Local Authentication Sync
+### 3. Local Authentication Sync & Automated Token Refresh
 
 Run the local authentication utility to extract your session cookies and sync them to your GitHub repository secret (`NOTEBOOKLM_STORAGE_STATE`):
 
 ```bash
 python3 sync_auth.py
 ```
+
+To ensure your GitHub Actions secret never expires, install the local 12-hour automated sync cron job on your Mac:
+
+```bash
+bash setup_local_cron.sh
+```
+
 
 ### 4. Scheduled and Manual Execution
 
